@@ -1,0 +1,33 @@
+version: 2.0
+tools:
+  go: golang1.23
+stages:
+  - stage: checkout
+    steps:
+      - default_checkout:
+  - stage: Snyk Test
+    steps:
+      - snyk_test:
+  - stage: docker login
+    steps:
+      - docker_login:
+          accounts:
+            - preproduction_build
+            - prod_build
+  - stage: ship to preproduction_build
+    steps:
+      - docker_multi_platform_build:
+          account: preproduction_build
+          image_name: toast/orka-github-actions-runner:$SHORT_COMMIT_SHA
+          platforms:
+            - linux/amd64
+            - linux/arm64
+  - stage: ship to prod_build
+    when: env.BRANCH_NAME == 'main'
+    steps:
+      - docker_multi_platform_build:
+          account: prod_build
+          image_name: toast/orka-github-actions-runner:$SHORT_COMMIT_SHA
+          platforms:
+            - linux/amd64
+            - linux/arm64

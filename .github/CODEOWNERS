@@ -2,4 +2,4 @@
 # last matching rule takes precedence
 
 # dev-maintainers are default global owners
-* @macstadium/dev-maintainers
+* @toasttab/release-engineering @toasttab/mac-build-infrastructure
