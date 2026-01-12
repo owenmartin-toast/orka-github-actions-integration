@@ -14,6 +14,6 @@ metadata:
   tags:
     - tier-2
 spec:
-  type: other
+  type: infrastructure
   lifecycle: production
   owner: release-engineering
