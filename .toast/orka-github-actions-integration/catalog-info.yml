@@ -1,0 +1,19 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: orka-github-actions-integration
+  description: An internal fork of the MacStadium Orka orchestrator for GitHub Actions
+  annotations:
+    backstage.io/source-location: url:https://github.toasttab.com/toasttab/orka-github-actions-integration
+    toasttab.com/artifact-type: other
+    toasttab.com/department: CLOUD_INFRASTRUCTURE_SECURITY
+    toasttab.com/jira-project-key: REL
+  links:
+    - url: https://github.toasttab.com/toasttab/orka-github-actions-integration/blob/main/README.md
+      title: Documentation
+  tags:
+    - tier-2
+spec:
+  type: other
+  lifecycle: production
+  owner: release-engineering
