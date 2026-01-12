@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	backoff "github.com/cenkalti/backoff/v4"
 	"github.com/macstadium/orka-github-actions-integration/pkg/env"
@@ -14,6 +15,11 @@ import (
 	"github.com/macstadium/orka-github-actions-integration/pkg/orka"
 	"github.com/macstadium/orka-github-actions-integration/pkg/utils"
 	"go.uber.org/zap"
+)
+
+const (
+	runnerDeregistrationTimeout      = 30 * time.Second
+	runnerDeregistrationPollInterval = 2 * time.Second
 )
 
 type RunnerProvisioner struct {
@@ -95,6 +101,9 @@ func (p *RunnerProvisioner) getRealVMIP(vmIP string) (string, error) {
 }
 
 func (p *RunnerProvisioner) deleteVM(ctx context.Context, runnerName string) {
+	// Wait for runner to de-register from GitHub before deleting VM
+	p.ensureRunnerDeregistered(ctx, runnerName)
+
 	p.logger.Infof("deleting Orka VM with name %s", runnerName)
 	operation := func() error {
 		err := p.orkaClient.DeleteVM(ctx, runnerName)
@@ -110,6 +119,55 @@ func (p *RunnerProvisioner) deleteVM(ctx context.Context, runnerName string) {
 	} else {
 		p.logger.Infof("deleted Orka VM with name %s", runnerName)
 	}
+}
+
+// ensureRunnerDeregistered waits for the runner to de-register from GitHub.
+// If the runner doesn't de-register within the timeout, it force-deletes the runner.
+func (p *RunnerProvisioner) ensureRunnerDeregistered(ctx context.Context, runnerName string) {
+	p.logger.Infof("waiting for runner %s to de-register from GitHub", runnerName)
+
+	deadline := time.Now().Add(runnerDeregistrationTimeout)
+	for time.Now().Before(deadline) {
+		runner, err := p.actionsClient.GetRunner(ctx, runnerName)
+		if err != nil {
+			p.logger.Warnf("error checking runner %s registration status: %s", runnerName, err.Error())
+			time.Sleep(runnerDeregistrationPollInterval)
+			continue
+		}
+
+		if runner == nil {
+			p.logger.Infof("runner %s has de-registered from GitHub", runnerName)
+			return
+		}
+
+		time.Sleep(runnerDeregistrationPollInterval)
+	}
+
+	// Runner didn't de-register in time, force-delete it
+	p.logger.Warnf("runner %s did not de-register within %v, force-deleting from GitHub", runnerName, runnerDeregistrationTimeout)
+	p.forceDeleteRunner(ctx, runnerName)
+}
+
+// forceDeleteRunner removes the runner from GitHub if it's still registered.
+func (p *RunnerProvisioner) forceDeleteRunner(ctx context.Context, runnerName string) {
+	runner, err := p.actionsClient.GetRunner(ctx, runnerName)
+	if err != nil {
+		p.logger.Errorf("error getting runner %s for force-deletion: %s", runnerName, err.Error())
+		return
+	}
+
+	if runner == nil {
+		p.logger.Infof("runner %s already de-registered, no force-deletion needed", runnerName)
+		return
+	}
+
+	err = p.actionsClient.DeleteRunner(ctx, runner.Id)
+	if err != nil {
+		p.logger.Errorf("error force-deleting runner %s (ID: %d) from GitHub: %s", runnerName, runner.Id, err.Error())
+		return
+	}
+
+	p.logger.Infof("successfully force-deleted runner %s (ID: %d) from GitHub", runnerName, runner.Id)
 }
 
 func (p *RunnerProvisioner) createRunner(ctx context.Context, runnerName string) (*types.RunnerScaleSetJitRunnerConfig, error) {
